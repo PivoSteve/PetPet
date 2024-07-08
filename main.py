@@ -11,7 +11,10 @@ from aiogram.utils.callback_answer import CallbackAnswerMiddleware
 from modules.handlers.handlers import router
 from modules.libraries.database import init_db, get_all_pets, update_pet
 from datetime import datetime, timedelta
-TOKEN_FILE_PATH = '/home/syra/2501/tg_bots/petpet/TOKEN' ## MARK: CHANGE TOKEN PATH
+if os.name == 'nt':  ## MARK: CHANGE TOKEN 
+    TOKEN_FILE_PATH = 'C:/2501/petpet/data/TOKEN'
+else:
+    TOKEN_FILE_PATH = '/home/syra/2501/tg_bots/petpet/TOKEN'
 LOGGING_PATH = './logs'
 
 def read_token_from_file(file_path):
@@ -30,12 +33,19 @@ async def periodic_update():
     while True:
         pets = get_all_pets()
         for pet in pets:
-            new_hunger = min(100, pet['hunger'] + 5)
-            new_cleanliness = max(0, pet['cleanliness'] - 5)
-            new_happiness = max(0, pet['happiness'] - 3)
-            new_energy = min(100, pet['energy'] + 10)
-            update_pet(pet['user_id'], hunger=new_hunger, cleanliness=new_cleanliness, happiness=new_happiness, energy=new_energy)
-        await asyncio.sleep(3600)  # Обновление каждый час
+            updates = {
+                'hunger': min(100, pet['hunger'] + 5),
+                'cleanliness': max(0, pet['cleanliness'] - 5),
+                'happiness': max(0, pet['happiness'] - 3),
+                'energy': min(100, pet['energy'] + 10),
+                'stamina': max(0, pet.get('stamina', 50) - 1),
+                'strength': max(0, pet.get('strength', 50) - 1),
+                'agility': max(0, pet.get('agility', 50) - 1),
+                'flexibility': max(0, pet.get('flexibility', 50) - 1),
+                'intelligence': max(0, pet.get('intelligence', 50) - 1)
+            }
+            update_pet(pet['user_id'], **updates)
+        await asyncio.sleep(3600)
 
 async def main() -> None:
     bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))

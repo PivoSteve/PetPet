@@ -16,6 +16,9 @@ def init_db():
             energy INTEGER DEFAULT 100,
             intelligence INTEGER DEFAULT 50,
             strength INTEGER DEFAULT 50,
+            stamina INTEGER DEFAULT 50,
+            agility INTEGER DEFAULT 50,
+            flexibility INTEGER DEFAULT 50,
             last_fed TEXT,
             last_cleaned TEXT,
             last_played TEXT,
@@ -29,9 +32,15 @@ def init_db():
     conn.commit()
     conn.close()
 
+def dict_factory(cursor, row):
+    d = {}
+    for idx, col in enumerate(cursor.description):
+        d[col[0]] = row[idx]
+    return d
+
 def get_pet(user_id: int):
     conn = sqlite3.connect(DATABASE_NAME)
-    conn.row_factory = sqlite3.Row
+    conn.row_factory = dict_factory
     cursor = conn.cursor()
     cursor.execute('SELECT * FROM pets WHERE user_id = ?', (user_id,))
     pet = cursor.fetchone()
@@ -63,7 +72,7 @@ def update_pet(user_id: int, **kwargs):
 
 def get_all_pets():
     conn = sqlite3.connect(DATABASE_NAME)
-    conn.row_factory = sqlite3.Row
+    conn.row_factory = dict_factory
     cursor = conn.cursor()
     cursor.execute('SELECT * FROM pets')
     pets = cursor.fetchall()
