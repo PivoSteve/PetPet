@@ -45,7 +45,7 @@ def get_pet(user_id: int):
 def create_pet(user_id: int, name: str):
     personality = random.choice(['Игривый', 'Ленивый', 'Любопытный', 'Дружелюбный', 'Застенчивый'])
     favorite_food = random.choice(['Яблоко', 'Морковь', 'Банан', 'Орехи', 'Ягоды'])
-    favorite_activity = random.choice(['Прятки', 'Загадки', 'Рисование', 'Игра в мяч', 'Головоломки'])
+    favorite_activity = random.choice(['Математика', 'Загадки', 'Угадайки'])
 
     conn = sqlite3.connect(DATABASE_NAME)
     cursor = conn.cursor()
