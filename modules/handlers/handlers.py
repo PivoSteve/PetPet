@@ -43,6 +43,35 @@ def check_evolution(pet: dict) -> str:
         update_pet(pet['user_id'], name=new_form)
         return f"🎉 Поздравляем! Твой питомец эволюционировал в {new_form}!"
     return ""
+
+def apply_personality_effect(pet, stat, value):
+    personality = pet['personality']
+    if personality == 'Игривый':
+        if stat in ['happiness', 'energy']:
+            value *= 1.2
+        elif stat == 'intelligence':
+            value *= 0.9
+    elif personality == 'Ленивый':
+        if stat == 'energy':
+            value *= 0.8
+        elif stat in ['cleanliness', 'intelligence']:
+            value *= 1.1
+    elif personality == 'Любопытный':
+        if stat == 'intelligence':
+            value *= 1.2
+        elif stat == 'cleanliness':
+            value *= 0.9
+    elif personality == 'Дружелюбный':
+        if stat == 'happiness':
+            value *= 1.2
+        elif stat == 'intelligence':
+            value *= 0.9
+    elif personality == 'Застенчивый':
+        if stat == 'happiness':
+            value *= 0.9
+        elif stat == 'intelligence':
+            value *= 1.1
+    return round(value)
 ## MARK END: Utils
 
 ## MARK: Command handlers
@@ -116,13 +145,13 @@ async def process_feed(callback_query: CallbackQuery):
     food = callback_query.data.split("_")[1]
     pet = get_pet(callback_query.from_user.id)
     
-    hunger_reduction = random.randint(20, 40)
-    energy_boost = random.randint(10, 30)
-    happiness_boost = random.randint(5, 15)
+    hunger_reduction = apply_personality_effect(pet, 'hunger', random.randint(20, 40))
+    energy_boost = apply_personality_effect(pet, 'energy', random.randint(10, 30))
+    happiness_boost = apply_personality_effect(pet, 'happiness', random.randint(5, 15))
     
     if food == pet['favorite_food']:
-        hunger_reduction *= 1.5
-        happiness_boost *= 2
+        hunger_reduction = int(hunger_reduction * 1.5)
+        happiness_boost = int(happiness_boost * 2)
     
     new_hunger = max(const.MIN_STAT, pet['hunger'] - hunger_reduction)
     new_energy = min(const.MAX_STAT, pet['energy'] + energy_boost)
@@ -139,6 +168,11 @@ async def process_feed(callback_query: CallbackQuery):
         response += f"✨ Это его любимая еда! Он в восторге!\n"
     response += f"❕ Уровень голода теперь {new_hunger}/100, энергии {new_energy}/100, а счастья {new_happiness}/100."
     
+    if pet['personality'] == 'Ленивый':
+        response += f"\n😴 {pet['name']} ленится и не тратит много энергии на еду."
+    elif pet['personality'] == 'Игривый':
+        response += f"\n🎉 {pet['name']} игриво набрасывается на еду!"
+    
     await callback_query.message.edit_text(response)
 
 @router.message(F.text == "🚿 Помыть")
@@ -147,14 +181,49 @@ async def cmd_clean(message: Message):
     if pet:
         last_cleaned = parse_datetime(pet.get('last_cleaned'))
         if datetime.now() - last_cleaned > timedelta(minutes=25):
-            new_cleanliness = min(100, pet['cleanliness'] + 40)
-            new_happiness = min(100, pet['happiness'] + 10)
-            update_pet(message.from_user.id, cleanliness=new_cleanliness, happiness=new_happiness, last_cleaned=datetime.now().isoformat())
-            await message.answer(f"✔ Ты помыл {pet['name']}. Уровень чистоты теперь {new_cleanliness}/100, а счастья {new_happiness}/100.")
+            cleaning_options = ["🧼 Мыло", "🧴 Шампунь", "🧽 Губка"]
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text=option, callback_data=f"clean_{option.split()[1]}") for option in cleaning_options]
+            ])
+            await message.answer(f"Выбери, чем ты хочешь помыть {pet['name']}:", reply_markup=keyboard)
         else:
             await message.answer(f"❌ {pet['name']} уже чистый. Подожди немного перед следующим купанием.")
     else:
         await message.answer("❌ У тебя еще нет питомца. Используй /start чтобы создать его.")
+
+@router.callback_query(F.data.startswith("clean_"))
+async def process_cleaning(callback_query: CallbackQuery):
+    cleaning_item = callback_query.data.split("_")[1]
+    pet = get_pet(callback_query.from_user.id)
+    
+    cleanliness_boost = apply_personality_effect(pet, 'cleanliness', random.randint(30, 50))
+    happiness_change = apply_personality_effect(pet, 'happiness', random.randint(-10, 20))
+    
+    if cleaning_item == "Мыло":
+        cleanliness_boost += 10
+    elif cleaning_item == "Шампунь":
+        happiness_change += 10
+    elif cleaning_item == "Губка":
+        cleanliness_boost += 5
+        happiness_change += 5
+    
+    new_cleanliness = min(const.MAX_STAT, pet['cleanliness'] + cleanliness_boost)
+    new_happiness = max(const.MIN_STAT, min(const.MAX_STAT, pet['happiness'] + happiness_change))
+    
+    update_pet(callback_query.from_user.id, 
+               cleanliness=new_cleanliness, 
+               happiness=new_happiness, 
+               last_cleaned=datetime.now().isoformat())
+    
+    response = f"✨ Ты помыл {pet['name']} с помощью {cleaning_item}.\n"
+    response += f"Уровень чистоты теперь {new_cleanliness}/100, а счастья {new_happiness}/100.\n"
+    
+    if pet['personality'] == 'Ленивый':
+        response += f"\n😴 {pet['name']} лениво позволяет себя мыть."
+    elif pet['personality'] == 'Игривый':
+        response += f"\n🎉 {pet['name']} игриво плескается в воде!"
+    
+    await callback_query.message.edit_text(response)
 
 @router.message(F.text == "😴 Уложить спать")
 async def pet_sleep(message: Message):
@@ -224,7 +293,7 @@ async def start_riddle_game(callback_query: CallbackQuery, state: FSMContext):
         ("❔ Что не вместится даже в самую большую кастрюлю?", "её крышка"),
         ("❔ Чем кончается лето и начинается осень?", "буква о"),
         ("❔ В году 12 месяцев. Семь из них имеют 31 день. Сколько месяцев в году имеют 28 дней?", "все"),
-        ("❔ Кто ходит сидя?", "шахматисты"),
+        ("❔ Кто ходит сидя?", "шахматист"),
         ("❔ Хвост пушистый, мех золотистый, В лесу живет, В деревне кур крадет", "лиса")    
     ]
     riddle, answer = random.choice(riddles)
@@ -249,6 +318,20 @@ async def start_word_guess_game(callback_query: CallbackQuery, state: FSMContext
     await callback_query.message.edit_text(f"❕ Угадай слово:\n\n{masked_word}\n\nУ тебя 5 попыток.")
     await state.set_state(PetStates.waiting_for_word_guess)
 
+@router.message(PetStates.waiting_for_riddle_answer)
+async def process_riddle_answer(message: Message, state: FSMContext):
+    data = await state.get_data()
+    correct_answer = data.get("correct_answer")
+    user_answer = str(message.text.lower())
+    pet = get_pet(message.from_user.id)
+    
+    if user_answer == correct_answer:
+        await process_correct_answer(message, state, "Загадки")
+    else:
+        await process_wrong_answer(message, state, f"Правильный ответ: {correct_answer}")
+
+    await state.clear()
+
 @router.message(PetStates.waiting_for_math_answer)
 async def process_math_answer(message: Message, state: FSMContext):
     data = await state.get_data()
@@ -257,7 +340,7 @@ async def process_math_answer(message: Message, state: FSMContext):
     try:
         user_answer = int(message.text)
         if user_answer == correct_answer:
-            await process_correct_answer(message, state, "математические задачи")
+            await process_correct_answer(message, state, "Математика")
         else:
             await process_wrong_answer(message, state, f"Правильный ответ: {correct_answer}")
     except ValueError:
@@ -270,7 +353,7 @@ async def process_word_guess(message: Message, state: FSMContext):
     attempts = data.get("attempts", 3)
     
     if message.text.lower() == correct_answer:
-        await process_correct_answer(message, state, "угадай слово")
+        await process_correct_answer(message, state, "Угадайки")
     else:
         attempts -= 1
         if attempts > 0:
@@ -287,13 +370,13 @@ def can_play(pet):
 
 async def process_correct_answer(message: Message, state: FSMContext, game_type):
     pet = get_pet(message.from_user.id)
-    happiness_boost = random.randint(20, 40)
-    intelligence_boost = random.randint(15, 30)
-    energy_reduction = random.randint(10, 20)
+    happiness_boost = apply_personality_effect(pet, 'happiness', random.randint(20, 40))
+    intelligence_boost = apply_personality_effect(pet, 'intelligence', random.randint(15, 30))
+    energy_reduction = apply_personality_effect(pet, 'energy', random.randint(10, 20))
     
     if game_type == pet['favorite_activity']:
-        happiness_boost *= 1.5
-        intelligence_boost *= 1.5
+        happiness_boost = int(happiness_boost * 1.5)
+        intelligence_boost = int(intelligence_boost * 1.5)
     
     new_happiness = min(const.MAX_STAT, pet['happiness'] + happiness_boost)
     new_intelligence = min(const.MAX_STAT, pet['intelligence'] + intelligence_boost)
@@ -307,8 +390,13 @@ async def process_correct_answer(message: Message, state: FSMContext, game_type)
     
     response = f"✨ Отлично! {pet['name']} в восторге от вашей совместной игры в {game_type}. "
     if game_type == pet['favorite_activity']:
-        response += "Это его любимое занятие!\n"
-    response += f"Уровень счастья теперь {new_happiness}/100, интеллекта {new_intelligence}/100, а энергии {new_energy}/100."
+        response += "Это его любимое занятие!"
+    response += f"\nУровень счастья теперь {new_happiness}/100, интеллекта {new_intelligence}/100, а энергии {new_energy}/100."
+    
+    if pet['personality'] == 'Любопытный':
+        response += f"\n\n🧐 {pet['name']} с любопытством изучает новые знания!"
+    elif pet['personality'] == 'Застенчивый':
+        response += f"\n\n😊 {pet['name']} застенчиво радуется успеху."
     
     await message.answer(response)
     await state.clear()

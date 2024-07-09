@@ -45,15 +45,14 @@ async def periodic_update(bot: Bot):
             for stat in const.STATS:
                 if stat in ['hunger', 'energy']:
                     updates[stat] = min(const.MAX_STAT, pet[stat] + const.STAT_DECAY_RATE)
-                    print(updates[stat])
                 else:
                     updates[stat] = max(const.MIN_STAT, pet[stat] - const.STAT_DECAY_RATE)
-                    print(updates[stat])
             if random.random() < 0.3:  # дефолт: 30% шанс
                 event, effect = random_event()
                 updates.update(effect)
                 await notify_user(pet['user_id'], event, bot)
             update_pet(pet['user_id'], **updates)
+            logging.info(f"update_pet >> {pet['user_id']} {updates}")
         await asyncio.sleep(3600) # дефолт: 3600
 
 def random_event():
