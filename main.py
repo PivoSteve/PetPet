@@ -38,10 +38,6 @@ async def periodic_update():
                 'cleanliness': max(0, pet['cleanliness'] - 5),
                 'happiness': max(0, pet['happiness'] - 3),
                 'energy': min(100, pet['energy'] + 10),
-                'stamina': max(0, pet.get('stamina', 50) - 1),
-                'strength': max(0, pet.get('strength', 50) - 1),
-                'agility': max(0, pet.get('agility', 50) - 1),
-                'flexibility': max(0, pet.get('flexibility', 50) - 1),
                 'intelligence': max(0, pet.get('intelligence', 50) - 1)
             }
             update_pet(pet['user_id'], **updates)

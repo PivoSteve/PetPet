@@ -16,21 +16,6 @@ class PetStates(StatesGroup):
     waiting_for_training_choice = State()
     waiting_for_training_intensity = State()
 
-TRAINING_TYPES = {
-    "Бег": {"emoji": "🏃‍♂️", "primary": "stamina", "secondary": "agility"},
-    "Плавание": {"emoji": "🏊‍♂️", "primary": "stamina", "secondary": "strength"},
-    "Прыжки": {"emoji": "🦘", "primary": "agility", "secondary": "stamina"},
-    "Силовые упражнения": {"emoji": "🏋️‍♂️", "primary": "strength", "secondary": "stamina"},
-    "Растяжка": {"emoji": "🧘‍♂️", "primary": "flexibility", "secondary": "agility"},
-    "Игры на сообразительность": {"emoji": "🧠", "primary": "intelligence", "secondary": "happiness"}
-}
-
-INTENSITY_LEVELS = {
-    "Легкая": {"multiplier": 0.5, "energy_cost": 10},
-    "Средняя": {"multiplier": 1.0, "energy_cost": 20},
-    "Интенсивная": {"multiplier": 1.5, "energy_cost": 30}
-}
-
 def parse_datetime(date_string):
     if not date_string:
         return datetime.min
@@ -44,7 +29,7 @@ def get_main_keyboard():
         keyboard=[
             [KeyboardButton(text="🔍 Статус"), KeyboardButton(text="🍽 Покормить")],
             [KeyboardButton(text="🚿 Помыть"), KeyboardButton(text="🎮 Поиграть")],
-            [KeyboardButton(text="😴 Уложить спать"), KeyboardButton(text="💪 Тренировать")]
+            [KeyboardButton(text="😴 Уложить спать")]
         ],
         resize_keyboard=True
     )
@@ -82,7 +67,6 @@ async def cmd_status(message: Message):
             'happiness': '😊 Счастье',
             'energy': '⚡ Энергия',
             'intelligence': '🧠 Интеллект',
-            'strength': '💪 Сила',
         }
         status_text = f"Статус {pet['name']}:\n🙃 Характер: {pet['personality']}\n🥘 Любимая еда: {pet['favorite_food']}\n🏅 Любимое занятие: {pet['favorite_activity']}\n"
         for stat, emoji in status_emoji.items():
@@ -148,7 +132,7 @@ async def cmd_play(message: Message, state: FSMContext):
     if pet:
         last_played = parse_datetime(pet.get('last_played'))
         if datetime.now() - last_played > timedelta(minutes=10):
-            games = ["🧩 Загадки", "🏃‍♂️ Прятки", "⚽ Мяч", "🧠 Головоломки"]
+            games = ["🧩 Загадки", "🏃‍♂️ Прятки", "🖌️ Рисование", "⚽ Мяч", "🧠 Головоломки"]
             keyboard = InlineKeyboardMarkup(inline_keyboard=[
                 [InlineKeyboardButton(text=game, callback_data=f"play_{game.split()[1]}") for game in games[:2]],
                 [InlineKeyboardButton(text=game, callback_data=f"play_{game.split()[1]}") for game in games[2:]]
@@ -222,13 +206,14 @@ async def pet_sleep(message: Message):
     pet = get_pet(message.from_user.id)
     if pet:
         last_slept = parse_datetime(pet.get('last_slept'))
-        if datetime.now() - last_slept > timedelta(minutes=25):
+        if datetime.now() - last_slept > timedelta(minutes=25) or pet.get('energy') < 40:
             sleep_duration = random.randint(4, 8)
             new_energy = min(100, pet['energy'] + sleep_duration * 10)
             new_hunger = min(100, pet['hunger'] + sleep_duration * 5)
             new_happiness = max(0, pet['happiness'] - sleep_duration * 2)
             new_cleanliness = max(0, pet['cleanliness'] - sleep_duration * 3)
-            time_asleep = datetime.now().isoformat() - timedelta(hours=sleep_duration)
+            time_asleep = datetime.now() - timedelta(hours=sleep_duration)
+            time_asleep_str = time_asleep.isoformat()
             
             update_pet(message.from_user.id, 
                        energy=new_energy, 
@@ -236,12 +221,11 @@ async def pet_sleep(message: Message):
                        happiness=new_happiness, 
                        cleanliness=new_cleanliness, 
                        last_slept=datetime.now().isoformat(),
-                       last_fed=time_asleep,
-                       last_trained=time_asleep,
-                       last_cleaned=time_asleep,
-                       last_played=time_asleep)
+                       last_fed=time_asleep_str,
+                       last_cleaned=time_asleep_str,
+                       last_played=time_asleep_str)
             
-            await message.answer(f"{pet['name']} поспал {sleep_duration} часов и хорошо отдохнул! debug: {time_asleep}\n"
+            await message.answer(f"{pet['name']} поспал {sleep_duration} часов и хорошо отдохнул! debug: {time_asleep_str}\n"
                                  f"Энергия: {new_energy}/100\n"
                                  f"Голод: {new_hunger}/100\n"
                                  f"Счастье: {new_happiness}/100\n"
@@ -250,98 +234,3 @@ async def pet_sleep(message: Message):
             await message.answer(f"{pet['name']} еще не устал. Подожди немного перед следующим сном.")
     else:
         await message.answer("У тебя еще нет питомца. Используй /start чтобы создать его.")
-
-@router.message(F.text == "💪 Тренировать")
-async def train_pet(message: Message, state: FSMContext):
-    pet = get_pet(message.from_user.id)
-    if pet:
-        last_trained = parse_datetime(pet.get('last_trained'))
-        if datetime.now() - last_trained > timedelta(minutes=15):
-            keyboard = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text=f"{info['emoji']} {activity}", callback_data=f"train_{activity}") 
-                 for activity, info in list(TRAINING_TYPES.items())[:3]],
-                [InlineKeyboardButton(text=f"{info['emoji']} {activity}", callback_data=f"train_{activity}") 
-                 for activity, info in list(TRAINING_TYPES.items())[3:]]
-            ])
-            await message.answer("Выбери тип тренировки для питомца:", reply_markup=keyboard)
-            await state.set_state(PetStates.waiting_for_training_choice)
-        else:
-            cooldown = timedelta(minutes=15) - (datetime.now() - last_trained)
-            await message.answer(f"{pet['name']} еще не восстановился после предыдущей тренировки. "
-                                 f"Подожди еще {cooldown.seconds // 60} минут.")
-    else:
-        await message.answer("У тебя еще нет питомца. Используй /start чтобы создать его.")
-
-@router.callback_query(PetStates.waiting_for_training_choice)
-async def process_training_choice(callback_query: CallbackQuery, state: FSMContext):
-    training_type = callback_query.data.split("_")[1]
-    await state.update_data(training_type=training_type)
-    
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=level, callback_data=f"intensity_{level}") 
-         for level in INTENSITY_LEVELS.keys()]
-    ])
-    await callback_query.message.edit_text(f"Выбрана тренировка: {TRAINING_TYPES[training_type]['emoji']} {training_type}\n"
-                                           f"Теперь выбери интенсивность тренировки:", reply_markup=keyboard)
-    await state.set_state(PetStates.waiting_for_training_intensity)
-
-@router.callback_query(PetStates.waiting_for_training_intensity)
-async def process_training_intensity(callback_query: CallbackQuery, state: FSMContext):
-    intensity = callback_query.data.split("_")[1]
-    data = await state.get_data()
-    training_type = data['training_type']
-    
-    pet = get_pet(callback_query.from_user.id)
-    
-    primary_stat = TRAINING_TYPES[training_type]['primary']
-    secondary_stat = TRAINING_TYPES[training_type]['secondary']
-    
-    multiplier = INTENSITY_LEVELS[intensity]['multiplier']
-    energy_cost = INTENSITY_LEVELS[intensity]['energy_cost']
-    
-    if pet['energy'] < energy_cost:
-        await callback_query.message.edit_text(f"{pet['name']} слишком устал для такой интенсивной тренировки. "
-                                               f"Попробуй выбрать менее интенсивную тренировку или дай питомцу отдохнуть.")
-        await state.clear()
-        return
-    
-    primary_gain = int(random.randint(5, 15) * multiplier)
-    secondary_gain = int(random.randint(2, 8) * multiplier)
-    happiness_change = random.randint(-5, 10)
-    
-    new_primary_stat = min(100, pet[primary_stat] if primary_stat in pet.keys() else 50 + primary_gain)
-    new_secondary_stat = min(100, pet[secondary_stat] if secondary_stat in pet.keys() else 50 + secondary_gain)
-    new_energy = max(0, pet['energy'] - energy_cost)
-    new_happiness = max(0, min(100, pet['happiness'] + happiness_change))
-    
-    update_pet(callback_query.from_user.id, 
-               **{primary_stat: new_primary_stat, 
-                  secondary_stat: new_secondary_stat, 
-                  'energy': new_energy, 
-                  'happiness': new_happiness, 
-                  'last_trained': datetime.now().isoformat()})
-    
-    response = (f"{pet['name']} завершил {intensity.lower()} тренировку '{training_type}'!\n\n"
-                f"{TRAINING_TYPES[training_type]['emoji']} {primary_stat.capitalize()}: {new_primary_stat}/100 (+{primary_gain})\n"
-                f"{TRAINING_TYPES[training_type]['emoji']} {secondary_stat.capitalize()}: {new_secondary_stat}/100 (+{secondary_gain})\n"
-                f"⚡ Энергия: {new_energy}/100 (-{energy_cost})\n"
-                f"😊 Счастье: {new_happiness}/100 ({'+' if happiness_change > 0 else ''}{happiness_change})")
-    
-    # Проверка достижений
-    achievements = check_achievements(pet, primary_stat, new_primary_stat)
-    if achievements:
-        response += "\n\n🏆 Достижения:\n" + "\n".join(achievements)
-    
-    await callback_query.message.edit_text(response)
-    await state.clear()
-
-def check_achievements(pet, trained_stat, new_stat_value):
-    achievements = []
-    old_stat_value = pet[trained_stat] if trained_stat in pet.keys() else 0
-    if new_stat_value >= 50 and old_stat_value < 50:
-        achievements.append(f"🥉 Бронзовый уровень в {trained_stat}!")
-    if new_stat_value >= 75 and old_stat_value < 75:
-        achievements.append(f"🥈 Серебряный уровень в {trained_stat}!")
-    if new_stat_value == 100 and old_stat_value < 100:
-        achievements.append(f"🥇 Золотой уровень в {trained_stat}!")
-    return achievements
