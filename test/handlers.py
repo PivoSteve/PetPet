@@ -4,11 +4,14 @@ from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton, InlineKe
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from modules.libraries.database import get_pet, create_pet, update_pet
+from modules.libraries.constant import const
 from datetime import datetime, timedelta
+import asyncio
 import random
 
 router = Router()
 
+## MARK: Utils
 class PetStates(StatesGroup):
     waiting_for_name = State()
     waiting_for_game_choice = State()
@@ -34,6 +37,15 @@ def get_main_keyboard():
         resize_keyboard=True
     )
 
+def check_evolution(pet: dict) -> str:
+    if all(pet[stat] >= 80 for stat in const.STATS):
+        new_form = random.choice(["Супер", "Мега", "Ультра", "Гипер"]) + pet['name']
+        update_pet(pet['user_id'], name=new_form)
+        return f"🎉 Поздравляем! Твой питомец эволюционировал в {new_form}!"
+    return ""
+## MARK END: Utils
+
+## MARK: Command handlers
 @router.message(Command("start"))
 async def cmd_start(message: Message, state: FSMContext):
     pet = get_pet(message.from_user.id)
@@ -51,9 +63,13 @@ async def create_new_pet(message: Message, state: FSMContext):
     await state.clear()
 
 @router.message(F.text == "🔍 Статус")
-async def cmd_status(message: Message, status_text: str):
+async def cmd_status(message: Message, custom_message: str = None):
     pet = get_pet(message.from_user.id)
     if pet:
+        if custom_message is not None: 
+            status_text = f"{custom_message}\n\n"
+        else:
+            status_text = f"Статус {pet['name']}:\n\n"
         status_emoji = {
             'hunger': '🍔 Голод',
             'cleanliness': '🚿 Чистота',
@@ -61,11 +77,19 @@ async def cmd_status(message: Message, status_text: str):
             'energy': '⚡ Энергия',
             'intelligence': '🧠 Интеллект',
         }
-        status_text += f"🙃 Характер: {pet['personality']}\n🥘 Любимая еда: {pet['favorite_food']}\n🏅 Любимое занятие: {pet['favorite_activity']}\n"
         for stat, emoji in status_emoji.items():
             value = pet[stat]
             bars = '█' * (value // 10) + '▒' * ((100 - value) // 10)
             status_text += f"{emoji}: {bars} {value}/100\n"
+        
+        status_text += f"\n🙃 Характер: {pet['personality']}\n"
+        status_text += f"🥘 Любимая еда: {pet['favorite_food']}\n"
+        status_text += f"🏅 Любимое занятие: {pet['favorite_activity']}\n"
+        
+        evolution_message = check_evolution(pet)
+        if evolution_message:
+            status_text += f"\n{evolution_message}"
+        
         await message.answer(status_text)
     else:
         await message.answer("❌ У тебя еще нет питомца. Используй /start чтобы создать его.")
@@ -91,16 +115,29 @@ async def cmd_feed(message: Message):
 async def process_feed(callback_query: CallbackQuery):
     food = callback_query.data.split("_")[1]
     pet = get_pet(callback_query.from_user.id)
-    new_hunger = max(0, pet['hunger'] - 30)
-    new_energy = min(100, pet['energy'] + 20)
-    happiness_boost = 15 if food == pet['favorite_food'] else 5
-    new_happiness = min(100, pet['happiness'] + happiness_boost)
-    update_pet(callback_query.from_user.id, hunger=new_hunger, energy=new_energy, happiness=new_happiness, last_fed=datetime.now().isoformat())
     
-    response = f"Ты покормил {pet['name']} {food}. "
+    hunger_reduction = random.randint(20, 40)
+    energy_boost = random.randint(10, 30)
+    happiness_boost = random.randint(5, 15)
+    
     if food == pet['favorite_food']:
-        response += f"✔ Это его любимая еда! Он очень доволен! "
-    response += f"✔ Уровень голода теперь {new_hunger}/100, энергии {new_energy}/100, а счастья {new_happiness}/100."
+        hunger_reduction *= 1.5
+        happiness_boost *= 2
+    
+    new_hunger = max(const.MIN_STAT, pet['hunger'] - hunger_reduction)
+    new_energy = min(const.MAX_STAT, pet['energy'] + energy_boost)
+    new_happiness = min(const.MAX_STAT, pet['happiness'] + happiness_boost)
+    
+    update_pet(callback_query.from_user.id, 
+               hunger=new_hunger, 
+               energy=new_energy, 
+               happiness=new_happiness, 
+               last_fed=datetime.now().isoformat())
+    
+    response = f"🍔 Ты покормил {pet['name']} {food}.\n"
+    if food == pet['favorite_food']:
+        response += f"✨ Это его любимая еда! Он в восторге!\n"
+    response += f"❕ Уровень голода теперь {new_hunger}/100, энергии {new_energy}/100, а счастья {new_happiness}/100."
     
     await callback_query.message.edit_text(response)
 
@@ -118,119 +155,6 @@ async def cmd_clean(message: Message):
             await message.answer(f"❌ {pet['name']} уже чистый. Подожди немного перед следующим купанием.")
     else:
         await message.answer("❌ У тебя еще нет питомца. Используй /start чтобы создать его.")
-
-@router.message(F.text == "🎮 Поиграть")
-async def cmd_play(message: Message, state: FSMContext):
-    pet = get_pet(message.from_user.id)
-    if pet and can_play(pet):
-        games = ["🧩 Загадки", "🔢 Математика", "🔤 Угадай слово"]
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text=game, callback_data=f"play_{game.split()[1]}") for game in games[:3]],
-            [InlineKeyboardButton(text=game, callback_data=f"play_{game.split()[1]}") for game in games[3:]]
-        ])
-        await message.answer("✔ Во что ты хочешь поиграть с питомцем?", reply_markup=keyboard)
-        await state.set_state(PetStates.waiting_for_game_choice)
-    else:
-        await message.answer(f"❌ {pet['name']} устал. Подожди немного перед следующей игрой.")
-
-@router.callback_query(PetStates.waiting_for_game_choice)
-async def process_game_choice(callback_query: CallbackQuery, state: FSMContext):
-    game = callback_query.data.split("_")[1]
-    pet = get_pet(callback_query.from_user.id)
-    
-    if game == "Загадки":
-        await start_riddle_game(callback_query, state)
-    elif game == "Математика":
-        await start_math_game(callback_query, state)
-    elif game == "Угадай":
-        await start_word_guess_game(callback_query, state)
-        
-async def start_riddle_game(callback_query: CallbackQuery, state: FSMContext):
-    riddles = [
-        ("✔ У него огромный рот, Он зовется …", "бегемот"),
-        ("✔ Не птица, а с крыльями, Не пчела, а над цветком", "бабочка"),
-        ("✔ Что принадлежит вам, но другие используют это чаще?", "моё имя"),
-        ("✔ Что можно видеть с закрытыми глазами?", "сон"),
-        ("✔ Как человек может провести 8 дней без сна?", "спать ночью"),
-        ("✔ Не живое, а на всех языках говорит.", "эхо"),
-        ("✔ Что не вместится даже в самую большую кастрюлю?", "её крышка"),
-        ("✔ Чем кончается лето и начинается осень?", "буква о"),
-        ("✔ В году 12 месяцев. Семь из них имеют 31 день. Сколько месяцев в году имеют 28 дней?", "все"),
-        ("✔ Кто ходит сидя?", "шахматисты"),
-        ("✔ Хвост пушистый, мех золотистый, В лесу живет, В деревне кур крадет", "лиса")    
-    ]
-    riddle, answer = random.choice(riddles)
-    await state.update_data(correct_answer=answer)
-    await callback_query.message.edit_text(f"✔ Отгадай загадку:\n\n{riddle}")
-    await state.set_state(PetStates.waiting_for_riddle_answer)
-
-async def start_math_game(callback_query: CallbackQuery, state: FSMContext):
-    num1, num2 = random.randint(1, 10), random.randint(1, 10)
-    operation = random.choice(['+', '-', '*'])
-    question = f"{num1} {operation} {num2}"
-    answer = eval(question)
-    await state.update_data(correct_answer=answer)
-    await callback_query.message.edit_text(f"✔ Реши пример:\n\n{question} = ?")
-    await state.set_state(PetStates.waiting_for_math_answer)
-
-async def start_word_guess_game(callback_query: CallbackQuery, state: FSMContext):
-    words = ["кот", "собака", "попугай", "хомяк", "черепаха"]
-    word = random.choice(words)
-    await state.update_data(correct_answer=word, attempts=3)
-    masked_word = "".join(["_" if i != 0 else w for i, w in enumerate(word)])
-    await callback_query.message.edit_text(f"✔ Угадай слово:\n\n{masked_word}\n\nУ тебя 3 попытки.")
-    await state.set_state(PetStates.waiting_for_word_guess)
-
-@router.message(PetStates.waiting_for_math_answer)
-async def process_math_answer(message: Message, state: FSMContext):
-    data = await state.get_data()
-    correct_answer = data.get("correct_answer")
-    
-    try:
-        user_answer = int(message.text)
-        if user_answer == correct_answer:
-            await process_correct_answer(message, state, "математическую задачу")
-        else:
-            await process_wrong_answer(message, state, f"Правильный ответ: {correct_answer}")
-    except ValueError:
-        await message.answer("❌ Пожалуйста, введите число.")
-
-@router.message(PetStates.waiting_for_word_guess)
-async def process_word_guess(message: Message, state: FSMContext):
-    data = await state.get_data()
-    correct_answer = data.get("correct_answer")
-    attempts = data.get("attempts", 3)
-    
-    if message.text.lower() == correct_answer:
-        await process_correct_answer(message, state, "слово")
-    else:
-        attempts -= 1
-        if attempts > 0:
-            masked_word = "".join([w if w in message.text.lower() else "_" for w in correct_answer])
-            await message.answer(f"❌ Неверно. Осталось попыток: {attempts}\n\n{masked_word}")
-            await state.update_data(attempts=attempts)
-        else:
-            await process_wrong_answer(message, state, f"Правильное слово: {correct_answer}")
-
-def can_play(pet):
-    last_played = parse_datetime(pet.get('last_played'))
-    return datetime.now() - last_played > timedelta(minutes=10)
-
-async def process_correct_answer(message: Message, state: FSMContext, game_type):
-    pet = get_pet(message.from_user.id)
-    new_happiness = min(100, pet['happiness'] + 30)
-    new_intelligence = min(100, pet['intelligence'] + 20)
-    update_pet(message.from_user.id, happiness=new_happiness, intelligence=new_intelligence, last_played=datetime.now().isoformat())
-    await message.answer(f"✔ Правильно! {pet['name']} очень рад, что вы разгадали {game_type} вместе. Уровень счастья теперь {new_happiness}/100, а интеллекта {new_intelligence}/100.")
-    await state.clear()
-
-async def process_wrong_answer(message: Message, state: FSMContext, correct_answer):
-    pet = get_pet(message.from_user.id)
-    new_happiness = min(100, pet['happiness'] + 10)
-    new_intelligence = min(100, pet['intelligence'] - 10)
-    update_pet(message.from_user.id, happiness=new_happiness, intelligence=new_intelligence, last_played=datetime.now().isoformat())
-    await message.answer(f"❌ К сожалению, это неправильный ответ. {correct_answer}. Но {pet['name']} все равно доволен, что вы играли вместе. Уровень счастья теперь {new_happiness}/100, а интеллекта {new_intelligence}/100.")
-    await state.clear()
 
 @router.message(F.text == "😴 Уложить спать")
 async def pet_sleep(message: Message):
@@ -257,8 +181,144 @@ async def pet_sleep(message: Message):
                        last_played=time_asleep_str)
             
             await asyncio.sleep(sleep_duration)
-            await message.answer(f"{pet['name']} поспал {sleep_duration} часов и хорошо отдохнул!\n")
+            await cmd_status(message, f"✔ {pet['name']} поспал {sleep_duration} часов и хорошо отдохнул!\nВот его нынешние характеристики:")
         else:
             await message.answer(f"❌ {pet['name']} еще не устал. Подожди немного перед следующим сном.")
     else:
         await message.answer("❌ У тебя еще нет питомца. Используй /start чтобы создать его.")
+
+@router.message(F.text == "🎮 Поиграть")
+async def cmd_play(message: Message, state: FSMContext):
+    pet = get_pet(message.from_user.id)
+    if pet and can_play(pet):
+        games = ["🧩 Загадки", "🔢 Математика", "🔤 Угадай слово"]
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text=game, callback_data=f"play_{game.split()[1]}") for game in games[:3]],
+            [InlineKeyboardButton(text=game, callback_data=f"play_{game.split()[1]}") for game in games[3:]]
+        ])
+        await message.answer("❔ Во что ты хочешь поиграть с питомцем?", reply_markup=keyboard)
+        await state.set_state(PetStates.waiting_for_game_choice)
+    else:
+        await message.answer(f"❌ {pet['name']} устал. Подожди немного перед следующей игрой.")
+
+@router.callback_query(PetStates.waiting_for_game_choice)
+async def process_game_choice(callback_query: CallbackQuery, state: FSMContext):
+    game = callback_query.data.split("_")[1]
+    pet = get_pet(callback_query.from_user.id)
+    
+    if game == "Загадки":
+        await start_riddle_game(callback_query, state)
+    elif game == "Математика":
+        await start_math_game(callback_query, state)
+    elif game == "Угадай":
+        await start_word_guess_game(callback_query, state)
+        
+async def start_riddle_game(callback_query: CallbackQuery, state: FSMContext):
+    riddles = [
+        ("❔ У него огромный рот, Он зовется …", "бегемот"),
+        ("❔ Не птица, а с крыльями, Не пчела, а над цветком", "бабочка"),
+        ("❔ Что принадлежит вам, но другие используют это чаще?", "моё имя"),
+        ("❔ Что можно видеть с закрытыми глазами?", "сон"),
+        ("❔ Как человек может провести 8 дней без сна?", "спать ночью"),
+        ("❔ Не живое, а на всех языках говорит.", "эхо"),
+        ("❔ Что не вместится даже в самую большую кастрюлю?", "её крышка"),
+        ("❔ Чем кончается лето и начинается осень?", "буква о"),
+        ("❔ В году 12 месяцев. Семь из них имеют 31 день. Сколько месяцев в году имеют 28 дней?", "все"),
+        ("❔ Кто ходит сидя?", "шахматисты"),
+        ("❔ Хвост пушистый, мех золотистый, В лесу живет, В деревне кур крадет", "лиса")    
+    ]
+    riddle, answer = random.choice(riddles)
+    await state.update_data(correct_answer=answer)
+    await callback_query.message.edit_text(f"❕ Отгадай загадку:\n\n{riddle}")
+    await state.set_state(PetStates.waiting_for_riddle_answer)
+
+async def start_math_game(callback_query: CallbackQuery, state: FSMContext):
+    num1, num2 = random.randint(1, 10), random.randint(1, 10)
+    operation = random.choice(['+', '-', '*'])
+    question = f"{num1} {operation} {num2}"
+    answer = eval(question)
+    await state.update_data(correct_answer=answer)
+    await callback_query.message.edit_text(f"❕ Реши пример:\n\n{question} = ?")
+    await state.set_state(PetStates.waiting_for_math_answer)
+
+async def start_word_guess_game(callback_query: CallbackQuery, state: FSMContext):
+    words = ["кот", "собака", "попугай", "хомяк", "черепаха", "конь", "лиса", "лето"]
+    word = random.choice(words)
+    await state.update_data(correct_answer=word, attempts=5)
+    masked_word = "".join(["🕳" if i != 0 else w for i, w in enumerate(word)])
+    await callback_query.message.edit_text(f"❕ Угадай слово:\n\n{masked_word}\n\nУ тебя 5 попыток.")
+    await state.set_state(PetStates.waiting_for_word_guess)
+
+@router.message(PetStates.waiting_for_math_answer)
+async def process_math_answer(message: Message, state: FSMContext):
+    data = await state.get_data()
+    correct_answer = data.get("correct_answer")
+    
+    try:
+        user_answer = int(message.text)
+        if user_answer == correct_answer:
+            await process_correct_answer(message, state, "математические задачи")
+        else:
+            await process_wrong_answer(message, state, f"Правильный ответ: {correct_answer}")
+    except ValueError:
+        await message.answer("❌ Пожалуйста, введите число.")
+
+@router.message(PetStates.waiting_for_word_guess)
+async def process_word_guess(message: Message, state: FSMContext):
+    data = await state.get_data()
+    correct_answer = data.get("correct_answer")
+    attempts = data.get("attempts", 3)
+    
+    if message.text.lower() == correct_answer:
+        await process_correct_answer(message, state, "угадай слово")
+    else:
+        attempts -= 1
+        if attempts > 0:
+            masked_word = "".join([w if w in message.text.lower() else "_" for w in correct_answer])
+            await message.answer(f"❌ Неверно. Осталось попыток: {attempts}\n\n{masked_word}")
+            await state.update_data(attempts=attempts)
+        else:
+            await process_wrong_answer(message, state, f"Правильное слово: {correct_answer}")
+
+## MARK: Some more utils
+def can_play(pet):
+    last_played = parse_datetime(pet.get('last_played'))
+    return datetime.now() - last_played > timedelta(minutes=10)
+
+async def process_correct_answer(message: Message, state: FSMContext, game_type):
+    pet = get_pet(message.from_user.id)
+    happiness_boost = random.randint(20, 40)
+    intelligence_boost = random.randint(15, 30)
+    energy_reduction = random.randint(10, 20)
+    
+    if game_type == pet['favorite_activity']:
+        happiness_boost *= 1.5
+        intelligence_boost *= 1.5
+    
+    new_happiness = min(const.MAX_STAT, pet['happiness'] + happiness_boost)
+    new_intelligence = min(const.MAX_STAT, pet['intelligence'] + intelligence_boost)
+    new_energy = max(const.MIN_STAT, pet['energy'] - energy_reduction)
+    
+    update_pet(message.from_user.id, 
+               happiness=new_happiness, 
+               intelligence=new_intelligence, 
+               energy=new_energy,
+               last_played=datetime.now().isoformat())
+    
+    response = f"✨ Отлично! {pet['name']} в восторге от вашей совместной игры в {game_type}. "
+    if game_type == pet['favorite_activity']:
+        response += "Это его любимое занятие!\n"
+    response += f"Уровень счастья теперь {new_happiness}/100, интеллекта {new_intelligence}/100, а энергии {new_energy}/100."
+    
+    await message.answer(response)
+    await state.clear()
+
+async def process_wrong_answer(message: Message, state: FSMContext, correct_answer):
+    pet = get_pet(message.from_user.id)
+    new_happiness = min(100, pet['happiness'] + 10)
+    new_intelligence = min(100, pet['intelligence'] - random.randint(2, 15))
+    update_pet(message.from_user.id, happiness=new_happiness, intelligence=new_intelligence, last_played=datetime.now().isoformat())
+    await message.answer(f"❌ К сожалению, это неправильный ответ. {correct_answer}.\n{pet['name']} все равно доволен, что вы играли вместе. Уровень счастья теперь {new_happiness}/100, а интеллекта {new_intelligence}/100.")
+    await state.clear()
+
+## MARK END: Some more utils
