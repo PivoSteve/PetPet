@@ -14,15 +14,10 @@ def init_db():
             cleanliness INTEGER DEFAULT 50,
             happiness INTEGER DEFAULT 50,
             energy INTEGER DEFAULT 100,
-            intelligence INTEGER DEFAULT 50,
-            strength INTEGER DEFAULT 50,
-            stamina INTEGER DEFAULT 50,
-            agility INTEGER DEFAULT 50,
-            flexibility INTEGER DEFAULT 50,
+            intelligence INTEGER DEFAULT 10,
             last_fed TEXT,
             last_cleaned TEXT,
             last_played TEXT,
-            last_trained TEXT,
             last_slept TEXT,
             personality TEXT,
             favorite_food TEXT,
@@ -50,7 +45,7 @@ def get_pet(user_id: int):
 def create_pet(user_id: int, name: str):
     personality = random.choice(['Игривый', 'Ленивый', 'Любопытный', 'Дружелюбный', 'Застенчивый'])
     favorite_food = random.choice(['Яблоко', 'Морковь', 'Банан', 'Орехи', 'Ягоды'])
-    favorite_activity = random.choice(['Бег', 'Плавание', 'Прыжки', 'Игра в мяч', 'Головоломки'])
+    favorite_activity = random.choice(['Прятки', 'Загадки', 'Рисование', 'Игра в мяч', 'Головоломки'])
 
     conn = sqlite3.connect(DATABASE_NAME)
     cursor = conn.cursor()
