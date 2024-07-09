@@ -82,9 +82,9 @@ async def cmd_status(message: Message):
             'happiness': '😊 Счастье',
             'energy': '⚡ Энергия',
             'intelligence': '🧠 Интеллект',
-            'strength': '💪 Сила'
+            'strength': '💪 Сила',
         }
-        status_text = f"Статус {pet['name']}:\n"
+        status_text = f"Статус {pet['name']}:\n🙃 Характер: {pet['personality']}\n🥘 Любимая еда: {pet['favorite_food']}\n🏅 Любимое занятие: {pet['favorite_activity']}\n"
         for stat, emoji in status_emoji.items():
             value = pet[stat]
             bars = '█' * (value // 10) + '▒' * ((100 - value) // 10)
@@ -169,6 +169,14 @@ async def process_game_choice(callback_query: CallbackQuery, state: FSMContext):
         riddles = [
             ("У него огромный рот, Он зовется …", "бегемот"),
             ("Не птица, а с крыльями, Не пчела, а над цветком", "бабочка"),
+            ("Что принадлежит вам, но другие используют это чаще?", "моё имя"),
+            ("Что можно видеть с закрытыми глазами?", "сон"),
+            ("Как человек может провести 8 дней без сна?", "спать ночью"),
+            ("Не живое, а на всех языках говорит.", "эхо"),
+            ("Что не вместится даже в самую большую кастрюлю?", "её крышка"),
+            ("Чем кончается лето и начинается осень?", "буква о"),
+            ("В году 12 месяцев. Семь из них имеют 31 день. Сколько месяцев в году имеют 28 дней?", "все"),
+            ("Кто ходит сидя?", "шахматисты"),
             ("Хвост пушистый, мех золотистый, В лесу живет, В деревне кур крадет", "лиса")
         ]
         riddle, answer = random.choice(riddles)
@@ -220,15 +228,20 @@ async def pet_sleep(message: Message):
             new_hunger = min(100, pet['hunger'] + sleep_duration * 5)
             new_happiness = max(0, pet['happiness'] - sleep_duration * 2)
             new_cleanliness = max(0, pet['cleanliness'] - sleep_duration * 3)
+            time_asleep = datetime.now().isoformat() - timedelta(hours=sleep_duration)
             
             update_pet(message.from_user.id, 
                        energy=new_energy, 
                        hunger=new_hunger, 
                        happiness=new_happiness, 
                        cleanliness=new_cleanliness, 
-                       last_slept=datetime.now().isoformat())
+                       last_slept=datetime.now().isoformat(),
+                       last_fed=time_asleep,
+                       last_trained=time_asleep,
+                       last_cleaned=time_asleep,
+                       last_played=time_asleep)
             
-            await message.answer(f"{pet['name']} поспал {sleep_duration} часов и хорошо отдохнул!\n"
+            await message.answer(f"{pet['name']} поспал {sleep_duration} часов и хорошо отдохнул! debug: {time_asleep}\n"
                                  f"Энергия: {new_energy}/100\n"
                                  f"Голод: {new_hunger}/100\n"
                                  f"Счастье: {new_happiness}/100\n"
