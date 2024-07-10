@@ -7,7 +7,7 @@ from modules.libraries.database import get_pet, create_pet, update_pet
 from modules.libraries.constant import const
 from datetime import datetime, timedelta
 import asyncio
-import random
+import random, math
 
 router = Router()
 
@@ -32,10 +32,10 @@ def get_main_keyboard():
         keyboard=[
             [KeyboardButton(text="🔍 Статус"), KeyboardButton(text="🍽 Покормить")],
             [KeyboardButton(text="🚿 Помыть"), KeyboardButton(text="🎮 Поиграть")],
-            [KeyboardButton(text="😴 Уложить спать")]
-        ],
-        resize_keyboard=True
-    )
+            [KeyboardButton(text="😴 Уложить спать"), KeyboardButton(text="📚 Учить трюк")]
+            ],
+            resize_keyboard=True
+        )
 
 def check_evolution(pet: dict) -> str:
     if all(pet[stat] >= 80 for stat in const.STATS):
@@ -249,12 +249,68 @@ async def pet_sleep(message: Message):
                        last_cleaned=time_asleep_str,
                        last_played=time_asleep_str)
             
+            await message.answer(f"😴 {pet['name']} спит, дождись его пробуждения чтобы продолжить ухаживать за ним!")
             await asyncio.sleep(sleep_duration)
             await cmd_status(message, f"✔ {pet['name']} поспал {sleep_duration} часов и хорошо отдохнул!\nВот его нынешние характеристики:")
         else:
             await message.answer(f"❌ {pet['name']} еще не устал. Подожди немного перед следующим сном.")
     else:
         await message.answer("❌ У тебя еще нет питомца. Используй /start чтобы создать его.")
+
+
+@router.message(F.text == "📚 Учить трюк")
+async def cmd_learn_trick(message: Message):
+    pet = get_pet(message.from_user.id)
+    if pet:
+        result = learn_new_trick(pet)
+        await message.answer(result)
+    else:
+        await message.answer("❌ У тебя еще нет питомца. Используй /start чтобы создать его.")
+
+def learn_new_trick(pet):
+    tricks = {
+        "sit": "сидеть",
+        "roll over": "перевернуться", 
+        "fetch": "принести",
+        "speak": "голос",
+        "play dead": "притвориться мёртвым"
+    }
+    
+    if 'tricks' not in pet or pet['tricks'] is None:
+        pet['tricks'] = []
+    
+    available_tricks = [t for t in tricks if tricks[t] not in pet['tricks']]
+    if not available_tricks:
+        return f"🎓 {pet['name']} уже знает все доступные команды!"
+    
+    new_trick_key = random.choice(available_tricks)
+    new_trick = tricks[new_trick_key]
+    
+    success_chance = (1 - math.sqrt(random.random()))
+    intelligence_factor = pet['intelligence'] / 100
+    
+    if success_chance < intelligence_factor:
+        pet['tricks'].append(new_trick)
+        
+        intelligence_boost = apply_personality_effect(pet, 'intelligence', random.randint(5, 15))
+        happiness_boost = apply_personality_effect(pet, 'happiness', random.randint(10, 20))
+        
+        new_intelligence = min(const.MAX_STAT, pet['intelligence'] + intelligence_boost)
+        new_happiness = min(const.MAX_STAT, pet['happiness'] + happiness_boost)
+        
+        update_pet(pet['user_id'],
+                   tricks=pet['tricks'],
+                   intelligence=new_intelligence,
+                   happiness=new_happiness)
+        
+        return f'🎉 {pet["name"]} успешно выучил новую команду: {new_trick}! Уровень интеллекта теперь {new_intelligence}/100, а счастья {new_happiness}/100.'
+    else:
+        energy_reduction = apply_personality_effect(pet, 'energy', random.randint(5, 10))
+        new_energy = max(const.MIN_STAT, pet['energy'] - energy_reduction)
+        
+        update_pet(pet['user_id'], energy=new_energy)
+        
+        return f'😓 {pet["name"]} старался, но пока не смог выучить команду {new_trick}, ведь его интеллект {intelligence_factor:.2f} ниже ожидаемого {success_chance:.2f}. Уровень энергии теперь {new_energy}/100. Попробуй в следующий раз!'
 
 @router.message(F.text == "🎮 Поиграть")
 async def cmd_play(message: Message, state: FSMContext):

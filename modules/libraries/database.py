@@ -1,6 +1,6 @@
 import sqlite3
 from datetime import datetime
-import random
+import random, json
 from modules.libraries.constant import const
 DATABASE_NAME = 'PetPet.db'
 
@@ -22,7 +22,8 @@ def init_db():
             last_slept TEXT,
             personality TEXT,
             favorite_food TEXT,
-            favorite_activity TEXT
+            favorite_activity TEXT,
+            tricks TEXT DEFAULT '[]'
         )
     ''')
     conn.commit()
@@ -54,22 +55,31 @@ def create_pet(user_id: int, name: str):
     cursor = conn.cursor()
     cursor.execute('''
         INSERT INTO pets (user_id, name, personality, favorite_food, favorite_activity,
-                          hunger, cleanliness, happiness, energy, intelligence)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                          hunger, cleanliness, happiness, energy, intelligence, tricks)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ''', (user_id, name, personality, favorite_food, favorite_activity,
           initial_stats['hunger'], initial_stats['cleanliness'], initial_stats['happiness'],
-          initial_stats['energy'], initial_stats['intelligence']))
+          initial_stats['energy'], initial_stats['intelligence'], '[]'))
     conn.commit()
     conn.close()
 
 def update_pet(user_id: int, **kwargs):
     conn = sqlite3.connect(DATABASE_NAME)
     cursor = conn.cursor()
+    for key, value in kwargs.items():
+        if isinstance(value, list):
+            kwargs[key] = json.dumps(value)
+    
     set_clause = ', '.join(f'{k} = ?' for k in kwargs)
     query = f'UPDATE pets SET {set_clause} WHERE user_id = ?'
-    cursor.execute(query, tuple(kwargs.values()) + (user_id,))
-    conn.commit()
-    conn.close()
+    
+    try:
+        cursor.execute(query, tuple(kwargs.values()) + (user_id,))
+        conn.commit()
+    except sqlite3.Error as e:
+        print(f"An error occurred: {e}")
+    finally:
+        conn.close()
 
 def get_all_pets():
     conn = sqlite3.connect(DATABASE_NAME)
