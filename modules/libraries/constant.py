@@ -4,3 +4,4 @@ class const():
     STAT_DECAY_RATE = 5
     STAT_BOOST_RATE = 10
     STATS = ['hunger', 'cleanliness', 'happiness', 'energy']
+    NEWSTATS = ['hunger', 'cleanliness', 'happiness', 'energy', 'intelligence']

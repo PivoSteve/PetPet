@@ -23,7 +23,7 @@ def init_db():
             personality TEXT,
             favorite_food TEXT,
             favorite_activity TEXT,
-            tricks TEXT DEFAULT '[]'
+            tricks TEXT NULL
         )
     ''')
     conn.commit()
@@ -49,17 +49,17 @@ def create_pet(user_id: int, name: str):
     favorite_food = random.choice(['Яблоко', 'Морковь', 'Банан', 'Орехи', 'Ягоды'])
     favorite_activity = random.choice(['Математика', 'Загадки', 'Угадайки'])
     
-    initial_stats = {stat: random.randint(40, 60) for stat in const.STATS}
+    initial_stats = {stat: random.randint(30, 60) for stat in const.NEWSTATS}
     
     conn = sqlite3.connect(DATABASE_NAME)
     cursor = conn.cursor()
     cursor.execute('''
         INSERT INTO pets (user_id, name, personality, favorite_food, favorite_activity,
-                          hunger, cleanliness, happiness, energy, intelligence, tricks)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                          hunger, cleanliness, happiness, energy, intelligence)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ''', (user_id, name, personality, favorite_food, favorite_activity,
           initial_stats['hunger'], initial_stats['cleanliness'], initial_stats['happiness'],
-          initial_stats['energy'], initial_stats['intelligence'], '[]'))
+          initial_stats['energy'], initial_stats['intelligence']))
     conn.commit()
     conn.close()
 

@@ -276,10 +276,12 @@ def learn_new_trick(pet):
         "play dead": "притвориться мёртвым"
     }
     
-    if 'tricks' not in pet or pet['tricks'] is None:
+    if pet['tricks'] is 'None':
         pet['tricks'] = []
     
-    available_tricks = [t for t in tricks if tricks[t] not in pet['tricks']]
+    available_tricks = [t for t in tricks if tricks[t] not in pet['tricks']] 
+    # FIXME: available_tricks = [t for t in tricks if tricks[t] not in pet['tricks']]
+    #        TypeError: argument of type 'NoneType' is not iterable
     if not available_tricks:
         return f"🎓 {pet['name']} уже знает все доступные команды!"
     
@@ -290,7 +292,7 @@ def learn_new_trick(pet):
     intelligence_factor = pet['intelligence'] / 100
     
     if success_chance < intelligence_factor:
-        pet['tricks'].append(new_trick)
+        pet['tricks'].append(new_trick) # FIXME: 
         
         intelligence_boost = apply_personality_effect(pet, 'intelligence', random.randint(5, 15))
         happiness_boost = apply_personality_effect(pet, 'happiness', random.randint(10, 20))
